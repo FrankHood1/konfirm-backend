@@ -57,7 +57,11 @@ describe('ReconcilerWatchdogService', () => {
     const spy = jest.spyOn(pool, 'query').mockRejectedValueOnce(new Error('connection terminated') as never);
     try {
       const r = await svc.check();
-      expect(r).toEqual({ stalled: false, ageMinutes: null });
+      // check()'s error fallback shape grew two fields (spendGuardHalted,
+      // failedFeeSettlements) after this assertion was written — matches
+      // the real current return in reconciler-watchdog.service.ts's catch
+      // block, not the narrower shape this test still expected.
+      expect(r).toEqual({ stalled: false, ageMinutes: null, spendGuardHalted: false, failedFeeSettlements: 0 });
       expect(errors.length).toBe(1);
       expect(errors[0]).toMatch(/watchdog check failed: connection terminated/);
     } finally {

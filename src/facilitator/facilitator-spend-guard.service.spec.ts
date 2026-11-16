@@ -141,8 +141,11 @@ describe('FacilitatorSpendGuardService', () => {
   });
 
   it('runs every pooled session in UTC, so the daily window is UTC midnight', async () => {
-    const { rows } = await pool.query<{ timezone: string }>('SHOW timezone');
-    expect(rows[0].timezone).toBe('UTC');
+    // Postgres names this column "TimeZone" (confirmed against a real
+    // `SHOW timezone` response, not assumed) — `pg` returns field names
+    // exactly as the server sends them, uppercase and all.
+    const { rows } = await pool.query<{ TimeZone: string }>('SHOW timezone');
+    expect(rows[0].TimeZone).toBe('UTC');
   });
 
   it("keeps the spend window pinned to UTC even when a session's timezone drifts", async () => {
@@ -152,8 +155,8 @@ describe('FacilitatorSpendGuardService', () => {
     try {
       await client.query("SET timezone TO 'Pacific/Kiritimati'");
       // A fresh pooled connection must still start in UTC.
-      const { rows } = await pool.query<{ timezone: string }>('SHOW timezone');
-      expect(rows[0].timezone).toBe('UTC');
+      const { rows } = await pool.query<{ TimeZone: string }>('SHOW timezone');
+      expect(rows[0].TimeZone).toBe('UTC');
       const { rows: boundary } = await pool.query<{ utc_midnight: boolean }>(
         "SELECT date_trunc('day', NOW()) = (date_trunc('day', NOW() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') AS utc_midnight",
       );

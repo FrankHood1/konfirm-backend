@@ -268,6 +268,52 @@ mod test {
         assert!(err.to_string().contains("XLM/USDC order book is empty"));
     }
 
+    // A real-shaped Horizon /payments response with zero records — e.g. the
+    // account has no new activity since `cursor`. Must decode cleanly to an
+    // empty Vec, not panic or error, since this is the common case on every
+    // poll where nothing new happened.
+    #[test]
+    fn payments_response_with_no_records_decodes_to_an_empty_vec() {
+        let body = r#"{"_embedded":{"records":[]}}"#;
+        let parsed: PaymentsResponse = serde_json::from_str(body).unwrap();
+        assert!(parsed.embedded.records.is_empty());
+    }
+
+    // A non-payment op (create_account) has no amount/from/to/asset_type at
+    // all — those fields must stay optional or one such record in a page
+    // throws out the whole batch (this was a real historical bug, see the
+    // doc comment on PaymentOp above).
+    #[test]
+    fn a_non_payment_op_with_no_asset_fields_still_decodes() {
+        let body = r#"{"_embedded":{"records":[
+            {"id":"1","paging_token":"1","type":"create_account","transaction_hash":"deadbeef"}
+        ]}}"#;
+        let parsed: PaymentsResponse = serde_json::from_str(body).unwrap();
+        assert_eq!(parsed.embedded.records.len(), 1);
+        assert_eq!(parsed.embedded.records[0].op_type, "create_account");
+        assert!(parsed.embedded.records[0].amount.is_none());
+    }
+
+    // A genuinely unreachable Horizon (nothing listening on this port) must
+    // not hang the reconciler forever — get_with_retry needs to exhaust its
+    // retries and return Err within a bounded time, same "fail within a
+    // provable bound" standard as compliance.rs's fail-open test.
+    #[tokio::test]
+    async fn get_with_retry_gives_up_and_errors_within_a_bounded_time_when_horizon_is_unreachable() {
+        let client = HorizonClient::new("http://127.0.0.1:1");
+        let started = std::time::Instant::now();
+        let err = client.payments_since("GANY", "0", 1).await;
+        assert!(err.is_err(), "an unreachable Horizon must surface as an error, never hang");
+        // MAX_ATTEMPTS=3, backoff 300ms/600ms between attempts, each attempt
+        // itself bounded by REQUEST_TIMEOUT (10s) — a refused connection
+        // fails near-instantly, so this should resolve in well under that.
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "took {:?}, expected the retries to exhaust quickly against a refused connection",
+            started.elapsed()
+        );
+    }
+
     const USDC_TESTNET_ISSUER: &str = "GBBD47IF6LWK7P7MDEVSCWR7DPUWV3NY3DTQEVFL4NAT4AQH3ZLLFLA5";
     const EURC_TESTNET_ISSUER: &str = "GB3Q6QDZYTHWT7E5PVS3W7FUT5GVAFC5KSZFFLPU25GO7VTC3NM2ZTVO";
 

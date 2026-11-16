@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiBody, ApiCookieAuth, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { ZodValidationPipe } from '../zod-validation.pipe';
@@ -66,6 +66,22 @@ export class LinksController {
     return this.links.create({ ...body, merchant_id: req.merchant.id });
   }
 
+  // Merchant-scoped by session, same shape as payments.controller.ts's
+  // GET /payments/mine — a merchant can create a link but, until this
+  // route existed, had no way to ever see it again.
+  @Get('mine')
+  @UseGuards(AuthGuard)
+  @ApiCookieAuth('merchant-session')
+  @ApiOperation({
+    summary: "List the authenticated merchant's payment links",
+    description: 'Returns links newest-first with a live use_count (confirmed payments only).',
+  })
+  @ApiResponse({ status: 200, description: 'Array of link records.' })
+  @ApiResponse({ status: 401, description: 'Not authenticated.' })
+  listMine(@Req() req: AuthedRequest) {
+    return this.links.listForMerchant(req.merchant.id);
+  }
+
   @Get(':id/public')
   @ApiOperation({
     summary: 'Get public projection of a payment link',
@@ -78,5 +94,25 @@ export class LinksController {
   @ApiResponse({ status: 404, description: 'Link not found.' })
   getPublic(@Param('id') id: string) {
     return this.links.getPublic(id);
+  }
+
+  // Scoped to the authenticated merchant's own links — a link id from
+  // another merchant's account 404s rather than confirming it exists.
+  @Post(':id/deactivate')
+  @HttpCode(200)
+  @UseGuards(AuthGuard)
+  @ApiCookieAuth('merchant-session')
+  @ApiOperation({
+    summary: "Deactivate one of the authenticated merchant's own payment links",
+    description:
+      'Sets `active = false`. Idempotent — deactivating an already-inactive link is a no-op. ' +
+      'No path back to active today; create a new link instead.',
+  })
+  @ApiParam({ name: 'id', description: 'Payment link UUID', type: 'string' })
+  @ApiResponse({ status: 200, description: 'Updated link record.' })
+  @ApiResponse({ status: 401, description: 'Not authenticated.' })
+  @ApiResponse({ status: 404, description: 'Link not found, or does not belong to this merchant.' })
+  deactivate(@Param('id') id: string, @Req() req: AuthedRequest) {
+    return this.links.deactivate(id, req.merchant.id);
   }
 }

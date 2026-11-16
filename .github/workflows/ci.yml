@@ -79,6 +79,26 @@ jobs:
         run: npm run test:live
         continue-on-error: true
 
+      # Rust reconciler — "payment correctness's one source of truth"
+      # (README) per this project's own stated invariant, yet this job never
+      # built or ran it at all until now; its real unit/integration tests
+      # (verdict.rs, store.rs, horizon.rs, compliance.rs, muxed.rs) existed
+      # but had zero CI coverage. ubuntu-latest ships a Rust toolchain, so
+      # no extra setup action is needed. A build failure always blocks —
+      # code that doesn't compile is definitely broken. Test failures are
+      # reported but don't block the merge, same reasoning as "Run tests
+      # (live testnet)" above: several of these tests (horizon.rs order-book
+      # rates, compliance.rs, store.rs db_tests) call the real Stellar
+      # testnet or this job's own Postgres rather than being mocked.
+      - name: Build reconciler (Rust)
+        working-directory: reconciler
+        run: cargo build --locked
+
+      - name: Test reconciler (Rust)
+        working-directory: reconciler
+        run: cargo test --locked -- --include-ignored
+        continue-on-error: true
+
       # A high-severity finding fails the build; moderate findings are
       # visible in the log without blocking every push on them.
       - name: Audit dependencies

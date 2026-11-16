@@ -20,6 +20,18 @@ export function nonNegativeIntegerStringSchema(maxValue: bigint, field: string) 
     }, `${field} exceeds its supported range`);
 }
 
+// Pagination query params (limit/offset) arrive as optional strings from
+// @Query() and used to go straight into `Number(x)` — a non-numeric value
+// (?limit=abc) becomes NaN, which Postgres then rejects as a raw 500
+// instead of a 400, or worse, a validation error the caller never sees
+// cleanly. These are read-only list endpoints, so garbage input is just
+// treated as "not provided" (the endpoint's own default applies) rather
+// than rejecting the whole request outright.
+export function parsePaginationInt(value?: string): number | undefined {
+  if (value === undefined || !/^\d+$/.test(value)) return undefined;
+  return Number(value);
+}
+
 export function nonNegativeDecimalStringSchema(label: string, scale: number, maxScaledValue: bigint) {
   return z
     .string()

@@ -45,6 +45,41 @@ export class LinksService {
     return existing.rows[0];
   }
 
+  // Merchant-scoped by session, same shape as payments.service.ts's
+  // listForMerchant — newest first, no pagination params (mirrors that
+  // route's own fixed LIMIT rather than inventing admin-style limit/offset
+  // for a dashboard list that doesn't need it yet).
+  async listForMerchant(merchantId: string) {
+    const { rows } = await pool.query(
+      `SELECT l.id, l.amount_usdc, l.currency, l.description, l.reusable, l.max_uses,
+              l.expires_at, l.active, l.created_at,
+              COUNT(p.id) FILTER (WHERE p.status = 'paid')::int AS use_count
+       FROM links l
+       LEFT JOIN payments p ON p.link_id = l.id
+       WHERE l.merchant_id = $1
+       GROUP BY l.id
+       ORDER BY l.created_at DESC
+       LIMIT 100`,
+      [merchantId],
+    );
+    return rows;
+  }
+
+  // Scoped by merchant_id in the WHERE clause, same as every other
+  // merchant-owned-resource mutation in this codebase: a link that exists
+  // but belongs to someone else returns 404, not 403 — never confirms to
+  // the caller that the id exists at all.
+  async deactivate(id: string, merchantId: string) {
+    const { rows } = await pool.query(
+      `UPDATE links SET active = false
+       WHERE id = $1 AND merchant_id = $2
+       RETURNING id, merchant_id, amount_usdc, currency, description, reusable, max_uses, expires_at, active, created_at`,
+      [id, merchantId],
+    );
+    if (rows.length === 0) throw new NotFoundException('link not found');
+    return rows[0];
+  }
+
   // The narrow public projection a checkout page is allowed to see — no
   // merchant internals, matching the same principle the invoice public
   // projection enforced in the original design.

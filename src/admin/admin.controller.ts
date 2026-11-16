@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Req
 import { ApiBody, ApiCookieAuth, ApiOperation, ApiParam, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { z } from 'zod';
 import { ZodValidationPipe } from '../zod-validation.pipe';
+import { parsePaginationInt } from '../common/numeric-validation';
 import { AdminGuard, AuthedAdminRequest } from '../admin-auth/admin-auth.guard';
 import { AdminMerchantsService } from './admin-merchants.service';
 import { AdminActionsService } from './admin-actions.service';
@@ -147,7 +148,7 @@ export class AdminController {
   @ApiResponse({ status: 200, description: 'Array of merchant records.' })
   @ApiResponse({ status: 401, description: 'Not authenticated as admin.' })
   listMerchants(@Query('limit') limit?: string, @Query('offset') offset?: string) {
-    return this.merchants.list(limit ? Number(limit) : undefined, offset ? Number(offset) : undefined);
+    return this.merchants.list(parsePaginationInt(limit), parsePaginationInt(offset));
   }
 
   @Post('merchants/:id/password-reset')
@@ -336,7 +337,7 @@ export class AdminController {
   @ApiResponse({ status: 200, description: 'Array of payment records.' })
   @ApiResponse({ status: 401, description: 'Not authenticated as admin.' })
   listPayments(@Query('status') status?: string, @Query('limit') limit?: string, @Query('offset') offset?: string) {
-    return this.payments.list(status, limit ? Number(limit) : undefined, offset ? Number(offset) : undefined);
+    return this.payments.list(status, parsePaginationInt(limit), parsePaginationInt(offset));
   }
 
   @Patch('payments/:id/status')
@@ -529,7 +530,7 @@ export class AdminController {
   @ApiResponse({ status: 200, description: 'Array of link records.' })
   @ApiResponse({ status: 401, description: 'Not authenticated as admin.' })
   listLinks(@Query('limit') limit?: string, @Query('offset') offset?: string) {
-    return this.links.list(limit ? Number(limit) : undefined, offset ? Number(offset) : undefined);
+    return this.links.list(parsePaginationInt(limit), parsePaginationInt(offset));
   }
 
   // --- Blockchain status ---
